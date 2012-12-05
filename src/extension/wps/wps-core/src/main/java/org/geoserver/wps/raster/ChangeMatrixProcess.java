@@ -6,6 +6,7 @@ package org.geoserver.wps.raster;
 
 import java.awt.Point;
 import java.awt.geom.AffineTransform;
+import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
 
+import javax.imageio.ImageIO;
 import javax.media.jai.JAI;
 import javax.media.jai.ParameterBlockJAI;
 import javax.media.jai.RenderedOp;
@@ -59,8 +61,11 @@ import com.vividsolutions.jts.geom.Geometry;
 @SuppressWarnings("deprecation")
 @DescribeProcess(title = "ChangeMatrix", description = "Compute the ChangeMatrix between two coverages")
 public class ChangeMatrixProcess implements GSProcess {
+	
+	private final static boolean DEBUG= Boolean.getBoolean("org.geoserver.wps.debug");
 
     private Catalog catalog;
+    
 	private GeoServer geoserver;
 
     public ChangeMatrixProcess(Catalog catalog, GeoServer geoserver) {
@@ -77,24 +82,23 @@ public class ChangeMatrixProcess implements GSProcess {
      */
     @DescribeResult(name = "changeMatrix", description = "the ChangeMatrix", type=ChangeMatrixDTO.class)
     public ChangeMatrixDTO execute(
-            @DescribeParameter(name = "referenceName", description = "Name of reference raster, optionally fully qualified (workspace:name)") String referenceName,
+            @DescribeParameter(name = "name", description = "Name of the raster, optionally fully qualified (workspace:name)") String referenceName,
             @DescribeParameter(name = "referenceFilter", description = "Filter to use on the raster data", min = 1) Filter referenceFilter,
-            @DescribeParameter(name = "nowName", description = "Name of reference raster, optionally fully qualified (workspace:name)") String nowName,
             @DescribeParameter(name = "nowFilter", description = "Filter to use on the raster data", min = 1) Filter nowFilter,
             @DescribeParameter(name = "classes", collectionType = Integer.class, min = 1, description = "The domain of the classes used in input rasters") Set<Integer> classes,
             @DescribeParameter(name = "ROI", min = 0, description = "Region Of Interest") Geometry roi)
             throws IOException {
     	
+    	// DEBUG OPTION
+    	if(DEBUG){
+    		return getTestMap();
+    	}
     	// get the original Coverages
         CoverageInfo ciReference = catalog.getCoverageByName(referenceName);
         if (ciReference == null) {
             throw new WPSException("Could not find coverage " + referenceName);
         }
-        CoverageInfo ciNow = catalog.getCoverageByName(nowName);
-        if (ciNow == null) {
-            throw new WPSException("Could not find coverage " + nowName);
-        }
-
+        
         RenderedOp result=null;
         GridCoverage2D nowCoverage=null;
         GridCoverage2D referenceCoverage=null;
@@ -105,7 +109,7 @@ public class ChangeMatrixProcess implements GSProcess {
         ParameterValueGroup readParametersDescriptor = referenceReader.getFormat().getReadParameters();
         List<GeneralParameterDescriptor> parameterDescriptors = readParametersDescriptor.getDescriptor().descriptors();
         // get params for this coverage and override what's needed
-        Map<String, Serializable> defaultParams = ciNow.getParameters();
+        Map<String, Serializable> defaultParams = ciReference.getParameters();
         GeneralParameterValue[]params=CoverageUtils.getParameters(readParametersDescriptor, defaultParams, false);
         // merge filter
         params = replaceParameter(
@@ -123,12 +127,11 @@ public class ChangeMatrixProcess implements GSProcess {
         
         
         // read now coverage
-        GridCoverageReader nowReader = ciNow.getGridCoverageReader(null, null);
-        readParametersDescriptor = nowReader.getFormat().getReadParameters();
+        readParametersDescriptor = referenceReader.getFormat().getReadParameters();
         parameterDescriptors = readParametersDescriptor
                 .getDescriptor().descriptors();
         // get params for this coverage and override what's needed
-        defaultParams = ciNow.getParameters();
+        defaultParams = ciReference.getParameters();
         params=CoverageUtils.getParameters(readParametersDescriptor, defaultParams, false);
         
         // merge filter
@@ -143,7 +146,7 @@ public class ChangeMatrixProcess implements GSProcess {
         		"USE_JAI_IMAGEREAD");
         // TODO add tiling, reuse standard values from config
         // TODO add background value, reuse standard values from config
-        nowCoverage = (GridCoverage2D) nowReader.read(params);
+        nowCoverage = (GridCoverage2D) referenceReader.read(params);
         
         
         // now perform the operation
@@ -177,7 +180,9 @@ public class ChangeMatrixProcess implements GSProcess {
         }
         result = JAI.create("ChangeMatrix", pbj, null);
 
+        //
         // result computation
+        //
         final int numTileX=result.getNumXTiles();
         final int numTileY=result.getNumYTiles();
         final int minTileX=result.getMinTileX();
@@ -216,7 +221,7 @@ public class ChangeMatrixProcess implements GSProcess {
         return new ChangeMatrixDTO(cm, classes);       
 
         }catch (Exception e) {
-			// TODO: handle exception
+        	throw new WPSException("Could process request ",e);
 		} finally{
 	        // clean up
 	        if(result!=null){
@@ -229,9 +234,6 @@ public class ChangeMatrixProcess implements GSProcess {
 	        	nowCoverage.dispose(true);
 	        }
 		}
-		
-		// if we get here there something went wrong
-		return null;
     }
 
     /**
@@ -263,4 +265,44 @@ public class ChangeMatrixProcess implements GSProcess {
         readParameters = readParametersClone;
         return readParameters;
     }
+    
+    /**
+    * @return an hardcoded ChangeMatrixOutput usefull for testing
+    */
+        private static final ChangeMatrixDTO getTestMap() {
+
+            ChangeMatrixDTO s = new ChangeMatrixDTO();
+
+            s.add(new ChangeMatrixElement(0, 0, 16002481));
+            s.add(new ChangeMatrixElement(0, 35, 0));
+            s.add(new ChangeMatrixElement(0, 1, 0));
+            s.add(new ChangeMatrixElement(0, 36, 4));
+            s.add(new ChangeMatrixElement(0, 37, 4));
+
+            s.add(new ChangeMatrixElement(1, 0, 0));
+            s.add(new ChangeMatrixElement(1, 35, 0));
+            s.add(new ChangeMatrixElement(1, 1, 3192));
+            s.add(new ChangeMatrixElement(1, 36, 15));
+            s.add(new ChangeMatrixElement(1, 37, 0));
+
+            s.add(new ChangeMatrixElement(35, 0, 0));
+            s.add(new ChangeMatrixElement(35, 35, 7546));
+            s.add(new ChangeMatrixElement(35, 1, 0));
+            s.add(new ChangeMatrixElement(35, 36, 0));
+            s.add(new ChangeMatrixElement(35, 37, 16));
+
+            s.add(new ChangeMatrixElement(36, 0, 166));
+            s.add(new ChangeMatrixElement(36, 35, 36));
+            s.add(new ChangeMatrixElement(36, 1, 117));
+            s.add(new ChangeMatrixElement(36, 36, 1273887));
+            s.add(new ChangeMatrixElement(36, 37, 11976));
+
+            s.add(new ChangeMatrixElement(37, 0, 274));
+            s.add(new ChangeMatrixElement(37, 35, 16));
+            s.add(new ChangeMatrixElement(37, 1, 16));
+            s.add(new ChangeMatrixElement(37, 36, 28710));
+            s.add(new ChangeMatrixElement(37, 37, 346154));
+
+            return s;
+        }    
 }

@@ -15,7 +15,7 @@ import org.geotools.process.raster.changematrix.ChangeMatrixDescriptor.ChangeMat
  *
  */
 public class ChangeMatrixDTO {
-	
+		
 	/**
      * The implementation of the changeMatrix as a Set
      */
@@ -27,7 +27,6 @@ public class ChangeMatrixDTO {
      * @param cm 
      */
     public ChangeMatrixDTO(ChangeMatrix cm, Set<Integer> classes) {
-        
         
         for (Integer elRef : classes) {
             for (Integer elNow : classes) {
@@ -42,7 +41,6 @@ public class ChangeMatrixDTO {
      * 
      */
     public ChangeMatrixDTO() {
-		
 	}
 
 	/**
