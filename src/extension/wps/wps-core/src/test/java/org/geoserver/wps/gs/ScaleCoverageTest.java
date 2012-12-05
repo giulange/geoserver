@@ -5,7 +5,6 @@
 package org.geoserver.wps.gs;
 
 import static junit.framework.Assert.assertEquals;
-import static junit.framework.Assert.assertTrue;
 
 import java.io.InputStream;
 
@@ -21,15 +20,14 @@ import com.mockrunner.mock.web.MockHttpServletResponse;
 
 public class ScaleCoverageTest extends WPSTestSupport {
     
-    static final double EPS = 1e-6;
     
-    @Override
+    static final double EPS = 1e-6;
+	@Override
     protected void onSetUp(SystemTestData testData) throws Exception {
         super.onSetUp(testData);
         
         addWcs11Coverages(testData);
     }
-
     @Test
     public void testScale() throws Exception {
         String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + 
