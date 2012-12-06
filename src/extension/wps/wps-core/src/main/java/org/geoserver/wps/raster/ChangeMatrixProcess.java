@@ -36,7 +36,7 @@ import org.geotools.process.gs.GSProcess;
 import org.geotools.process.raster.CoverageUtilities;
 import org.geotools.process.raster.changematrix.ChangeMatrixDescriptor;
 import org.geotools.process.raster.changematrix.ChangeMatrixDescriptor.ChangeMatrix;
-import org.geotools.process.raster.changematrix.ChangeMatrixStatsRIF;
+import org.geotools.process.raster.changematrix.ChangeMatrixRIF;
 import org.geotools.referencing.CRS;
 import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.geotools.resources.image.ImageUtilities;
@@ -63,7 +63,7 @@ import com.vividsolutions.jts.geom.Geometry;
 public class ChangeMatrixProcess implements GSProcess {
 	
     static {
-        Registry.registerRIF(JAI.getDefaultInstance(), new ChangeMatrixDescriptor(), new ChangeMatrixStatsRIF(),
+        Registry.registerRIF(JAI.getDefaultInstance(), new ChangeMatrixDescriptor(), new ChangeMatrixRIF(),
                 Registry.JAI_TOOLS_PRODUCT);
     }
     
