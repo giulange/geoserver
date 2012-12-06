@@ -6,7 +6,6 @@ package org.geoserver.wps.raster;
 
 import java.awt.Point;
 import java.awt.geom.AffineTransform;
-import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -16,7 +15,6 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
 
-import javax.imageio.ImageIO;
 import javax.media.jai.JAI;
 import javax.media.jai.ParameterBlockJAI;
 import javax.media.jai.RenderedOp;
@@ -30,12 +28,15 @@ import org.geoserver.wps.WPSException;
 import org.geotools.coverage.grid.GridCoverage2D;
 import org.geotools.gce.imagemosaic.ImageMosaicFormat;
 import org.geotools.geometry.jts.JTS;
+import org.geotools.image.jai.Registry;
 import org.geotools.process.factory.DescribeParameter;
 import org.geotools.process.factory.DescribeProcess;
 import org.geotools.process.factory.DescribeResult;
 import org.geotools.process.gs.GSProcess;
 import org.geotools.process.raster.CoverageUtilities;
+import org.geotools.process.raster.changematrix.ChangeMatrixDescriptor;
 import org.geotools.process.raster.changematrix.ChangeMatrixDescriptor.ChangeMatrix;
+import org.geotools.process.raster.changematrix.ChangeMatrixStatsRIF;
 import org.geotools.referencing.CRS;
 import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.geotools.resources.image.ImageUtilities;
@@ -58,10 +59,14 @@ import com.vividsolutions.jts.geom.Geometry;
  * @author Simone Giannecchini, GeoSolutions SAS
  * @author Andrea Aime, GeoSolutions SAS
  */
-@SuppressWarnings("deprecation")
 @DescribeProcess(title = "ChangeMatrix", description = "Compute the ChangeMatrix between two coverages")
 public class ChangeMatrixProcess implements GSProcess {
 	
+    static {
+        Registry.registerRIF(JAI.getDefaultInstance(), new ChangeMatrixDescriptor(), new ChangeMatrixStatsRIF(),
+                Registry.JAI_TOOLS_PRODUCT);
+    }
+    
 	private final static boolean DEBUG= Boolean.getBoolean("org.geoserver.wps.debug");
 
     private Catalog catalog;
