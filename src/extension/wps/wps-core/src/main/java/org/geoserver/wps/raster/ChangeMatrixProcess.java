@@ -112,7 +112,6 @@ public class ChangeMatrixProcess implements GSProcess {
         // read reference coverage
         GridCoverageReader referenceReader = ciReference.getGridCoverageReader(null, null);
         ParameterValueGroup readParametersDescriptor = referenceReader.getFormat().getReadParameters();
-        List<GeneralParameterDescriptor> parameterDescriptors = readParametersDescriptor.getDescriptor().descriptors();
         // get params for this coverage and override what's needed
         Map<String, Serializable> defaultParams = ciReference.getParameters();
         GeneralParameterValue[]params=CoverageUtils.getParameters(readParametersDescriptor, defaultParams, false);
@@ -133,22 +132,21 @@ public class ChangeMatrixProcess implements GSProcess {
         
         // read now coverage
         readParametersDescriptor = referenceReader.getFormat().getReadParameters();
-        parameterDescriptors = readParametersDescriptor
-                .getDescriptor().descriptors();
         // get params for this coverage and override what's needed
         defaultParams = ciReference.getParameters();
         params=CoverageUtils.getParameters(readParametersDescriptor, defaultParams, false);
         
         // merge filter
-        params = CoverageUtils.mergeParameter(parameterDescriptors, params, nowFilter, "FILTER",
-                    "Filter");
+        // merge filter
+        params = replaceParameter(
+        		params, 
+        		referenceFilter, 
+        		ImageMosaicFormat.FILTER);
         // merge USE_JAI_IMAGEREAD to false if needed
-        params = CoverageUtils.mergeParameter(
-        		parameterDescriptors, 
+        params = replaceParameter(
         		params, 
         		ImageMosaicFormat.USE_JAI_IMAGEREAD.getDefaultValue(), 
-        		ImageMosaicFormat.USE_JAI_IMAGEREAD.getName().toString(),
-        		"USE_JAI_IMAGEREAD");
+        		ImageMosaicFormat.USE_JAI_IMAGEREAD);
         // TODO add tiling, reuse standard values from config
         // TODO add background value, reuse standard values from config
         nowCoverage = (GridCoverage2D) referenceReader.read(params);
