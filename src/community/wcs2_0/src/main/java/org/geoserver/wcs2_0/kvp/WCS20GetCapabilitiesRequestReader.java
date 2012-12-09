@@ -5,19 +5,18 @@
 package org.geoserver.wcs2_0.kvp;
 
 import java.util.Map;
-import net.opengis.ows20.AcceptVersionsType;
 
+import net.opengis.ows20.AcceptVersionsType;
 import net.opengis.wcs20.GetCapabilitiesType;
 import net.opengis.wcs20.Wcs20Factory;
-import org.eclipse.emf.ecore.EObject;
-import org.geoserver.ows.kvp.AcceptVersionsKvpParser;
 
+import org.geoserver.ows.kvp.AcceptVersionsKvpParser;
 import org.geoserver.ows.kvp.EMFKvpRequestReader;
 
 /**
  * Parses a GetCapabilities request for WCS into the correspondent model object
  * 
- * @author ETj - GeoSolutions
+ * @author Emanuele Tajariol (etj) - GeoSolutions
  * 
  */
 public class WCS20GetCapabilitiesRequestReader extends EMFKvpRequestReader {
