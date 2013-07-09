@@ -4,10 +4,10 @@
  */
 package org.geoserver.wps.raster;
 
+import it.geosolutions.jaiext.changematrix.ChangeMatrixDescriptor.ChangeMatrix;
+
 import java.util.Set;
 import java.util.TreeSet;
-
-import org.geotools.process.raster.changematrix.ChangeMatrixDescriptor.ChangeMatrix;
 
 /**
  * This is the changeMatrix

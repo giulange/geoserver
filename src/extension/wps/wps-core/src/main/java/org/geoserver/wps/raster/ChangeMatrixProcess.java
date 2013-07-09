@@ -4,6 +4,10 @@
  */
 package org.geoserver.wps.raster;
 
+import it.geosolutions.jaiext.changematrix.ChangeMatrixDescriptor;
+import it.geosolutions.jaiext.changematrix.ChangeMatrixDescriptor.ChangeMatrix;
+import it.geosolutions.jaiext.changematrix.ChangeMatrixRIF;
+
 import java.awt.Point;
 import java.awt.Shape;
 import java.awt.geom.AffineTransform;
@@ -38,9 +42,6 @@ import org.geotools.process.factory.DescribeProcess;
 import org.geotools.process.factory.DescribeResult;
 import org.geotools.process.gs.GSProcess;
 import org.geotools.process.raster.CoverageUtilities;
-import org.geotools.process.raster.changematrix.ChangeMatrixDescriptor;
-import org.geotools.process.raster.changematrix.ChangeMatrixDescriptor.ChangeMatrix;
-import org.geotools.process.raster.changematrix.ChangeMatrixRIF;
 import org.geotools.referencing.CRS;
 import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.geotools.referencing.operation.transform.ProjectiveTransform;

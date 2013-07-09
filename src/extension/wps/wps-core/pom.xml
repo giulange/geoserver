@@ -23,6 +23,7 @@
     
     <properties>
       <jt.version>1.2.0</jt.version>
+      <jai-ext.version>1.0-SNAPSHOT</jai-ext.version>
     </properties>
     
     <repositories>
@@ -131,6 +132,11 @@
           <groupId>org.jaitools</groupId>
           <artifactId>jt-utils</artifactId>
           <version>${jt.version}</version>
+        </dependency>
+        <dependency>
+          <groupId>it.geosolutions-jai-ext</groupId>
+          <artifactId>change-matrix</artifactId>
+          <version>${jai-ext.version}</version>
         </dependency>
         <dependency>
           <groupId>com.google.guava</groupId>
