@@ -59,7 +59,14 @@
      <enabled>true</enabled>
    </snapshots>
   </repository>
-  
+   <repository>
+      <id>geosolutions</id>
+      <name>GeoSolutions libraries repository</name>
+      <url>http://maven.geo-solutions.it/</url>
+      <snapshots>
+     <enabled>true</enabled>
+   </snapshots>
+    </repository>
   <repository>
     <id>osgeo</id>
     <name>Open Source Geospatial Foundation Repository</name>
