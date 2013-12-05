@@ -36,7 +36,8 @@ public class ChangeMatrixPPIO extends CDataPPIO {
         PrintWriter pw = new PrintWriter(os);
         try{
 
-            pw.write(JSONSerializer.toJSON(((ChangeMatrixDTO)value).getChangeMatrix()).toString());
+            //pw.write(JSONSerializer.toJSON(((ChangeMatrixDTO)value).getChangeMatrix()).toString());
+        	pw.write(JSONSerializer.toJSON(((ChangeMatrixDTO)value)).toString());
         } finally{
         	IOUtils.closeQuietly(pw);
         	IOUtils.closeQuietly(os);

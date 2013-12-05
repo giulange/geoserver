@@ -17,7 +17,7 @@ import com.thoughtworks.xstream.mapper.MapperWrapper;
 public class AggregateProcessPPIO extends XStreamPPIO {
 
     protected AggregateProcessPPIO() {
-        super(AggregateProcess.Results.class);
+        super(AggregateProcess.Results.class, null);
     }
     
     @Override

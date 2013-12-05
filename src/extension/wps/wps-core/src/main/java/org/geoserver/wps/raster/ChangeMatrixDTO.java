@@ -15,7 +15,9 @@ import java.util.TreeSet;
  *
  */
 public class ChangeMatrixDTO {
-		
+
+	private String rasterName = null; 
+	
 	/**
      * The implementation of the changeMatrix as a Set
      */
@@ -26,7 +28,8 @@ public class ChangeMatrixDTO {
      * @param classes 
      * @param cm 
      */
-    public ChangeMatrixDTO(ChangeMatrix cm, Set<Integer> classes) {
+    public ChangeMatrixDTO(ChangeMatrix cm, Set<Integer> classes, String rasterName) {
+        this.setRasterName(rasterName);
         
         for (Integer elRef : classes) {
             for (Integer elNow : classes) {
@@ -58,5 +61,19 @@ public class ChangeMatrixDTO {
     public Set<ChangeMatrixElement> getChangeMatrix(){
         return changeMatrix;
     }
+
+	/**
+	 * @param rasterName the rasterName to set
+	 */
+	public void setRasterName(String rasterName) {
+		this.rasterName = rasterName;
+	}
+
+	/**
+	 * @return the rasterName
+	 */
+	public String getRasterName() {
+		return rasterName;
+	}
     
 }

@@ -1,8 +1,8 @@
 build-full.bat
 target
+bin
 .settings
 .classpath
 .project
 *.class
 *.pyc
-

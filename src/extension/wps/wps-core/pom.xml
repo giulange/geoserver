@@ -24,6 +24,7 @@
     <properties>
       <jt.version>1.2.0</jt.version>
       <jai-ext.version>1.0-SNAPSHOT</jai-ext.version>
+      <jf.version>0.3-SNAPSHOT</jf.version>
     </properties>
     
     <repositories>
@@ -38,6 +39,17 @@
     </repositories>
 
     <dependencies>
+		<dependency>
+			<groupId>org.jaitools</groupId>
+			<artifactId>jt-jiffle-language</artifactId>
+			<version>${jf.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.jaitools</groupId>
+					<artifactId>jt-utils</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>    
         <dependency>
             <groupId>org.geoserver</groupId>
             <artifactId>wfs</artifactId>

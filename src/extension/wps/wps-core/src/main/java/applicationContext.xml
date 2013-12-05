@@ -168,9 +168,12 @@
     <bean id="interpolationPPIO" class="org.geoserver.wps.ppio.InterpolationPPIO" />
     <bean id="sldStylePPIO" class="org.geoserver.wps.ppio.SLDStylePPIO" />
     <bean id="urlPPIO" class="org.geoserver.wps.ppio.URLPPIO" />
-    <bean id="jaitoolsRangePPIO" class="org.geoserver.wps.ppio.JAIToolsRangePPIO"/>
-    
-    
+
+	<bean id="featureAttributePPIO" class="org.geoserver.wps.ppio.FeatureAttributePPIO" />
+
+    <bean id="changeMatrixDTOPPIO" class="org.geoserver.wps.raster.ChangeMatrixPPIO" />  
+    <bean id="jaitoolsRangePPIO" class="org.geoserver.wps.ppio.JAIToolsRangePPIO" />
+        
     <!-- Register the GeoServer factory and processes -->
     <bean id="geoserverProcessFactory" class="org.geoserver.wps.jts.SpringBeanProcessFactory">
       <constructor-arg index="0" value="GeoServer specific processes"/>
@@ -197,14 +200,22 @@
       <constructor-arg index="0" ref="catalog"/>
     </bean>
     
-    <!-- The PPIO that need to be registered into SPI because of their dependencies -->
-    <bean id="changeMatrixDTOPPIO" class="org.geoserver.wps.raster.ChangeMatrixPPIO">
-    </bean>  
+    <!-- New Processes to be registered -->
+	<bean id="toFeature" class="org.geoserver.wps.gs.ToFeature" />
+
+	<bean id="wfsLog" class="org.geoserver.wps.gs.WFSLog">
+		<constructor-arg index="0" ref="geoServer"/>
+	</bean>
+
     <bean id="changeMatrix" class="org.geoserver.wps.raster.ChangeMatrixProcess">
       <constructor-arg index="0" ref="catalog"/>
       <constructor-arg index="1" ref="geoServer"/>
     </bean>
-    
+	<bean id="changeMatrixDeleteTransactionListener" class="org.geoserver.wps.raster.ChangeMatrixDeleteTransactionListener">
+		<constructor-arg index="0" ref="geoServer"/>
+	</bean>
+	
+	<bean id="jiffleScript" class="org.geoserver.wps.raster.algebra.JiffleScriptProcess" />
     
     <!--
     Factory for deprecated processes 
