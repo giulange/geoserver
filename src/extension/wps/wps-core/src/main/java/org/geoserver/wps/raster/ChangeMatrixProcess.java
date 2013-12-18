@@ -5,8 +5,8 @@
 package org.geoserver.wps.raster;
 
 import it.geosolutions.jaiext.changematrix.ChangeMatrixDescriptor;
-import it.geosolutions.jaiext.changematrix.ChangeMatrixRIF;
 import it.geosolutions.jaiext.changematrix.ChangeMatrixDescriptor.ChangeMatrix;
+import it.geosolutions.jaiext.changematrix.ChangeMatrixRIF;
 
 import java.awt.Point;
 import java.awt.Shape;
@@ -41,7 +41,6 @@ import org.geoserver.data.util.CoverageUtils;
 import org.geoserver.wps.WPSException;
 import org.geoserver.wps.gs.ImportProcess;
 import org.geoserver.wps.gs.ToFeature;
-import org.geoserver.wps.gs.WFSLog;
 import org.geoserver.wps.ppio.FeatureAttribute;
 import org.geotools.coverage.grid.GridCoverage2D;
 import org.geotools.coverage.grid.GridCoverageFactory;
@@ -67,11 +66,11 @@ import org.geotools.referencing.CRS;
 import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.geotools.referencing.operation.transform.ProjectiveTransform;
 import org.geotools.resources.image.ImageUtilities;
-import org.geotools.util.NullProgressListener;
 import org.geotools.utils.imageoverviews.OverviewsEmbedder;
 import org.geotools.utils.progress.ExceptionEvent;
 import org.geotools.utils.progress.ProcessingEvent;
 import org.geotools.utils.progress.ProcessingEventListener;
+import org.jaitools.imageutils.ROIGeometry;
 import org.opengis.coverage.grid.GridCoverageReader;
 import org.opengis.coverage.grid.GridEnvelope;
 import org.opengis.feature.simple.SimpleFeature;
@@ -168,7 +167,7 @@ public class ChangeMatrixProcess implements GSProcess {
 		SimpleFeatureCollection features = null;
 		Filter filter = null;
 		ToFeature toFeatureProcess = new ToFeature();
-        WFSLog wfsLogProcess = new WFSLog(geoserver);
+        //WFSLog wfsLogProcess = new WFSLog(geoserver);
 		// ///////////////////////////////////////////////
         
         try {
@@ -237,7 +236,7 @@ public class ChangeMatrixProcess implements GSProcess {
                 // GRID TO WORLD preparation from reference
                 //
                 final AffineTransform mt2D = (AffineTransform) referenceCoverage.getGridGeometry().getGridToCRS2D(PixelOrientation.UPPER_LEFT);
-
+                
                 // check if we need to reproject the ROI from WGS84 (standard in the input) to the reference CRS
                 final CoordinateReferenceSystem crs = referenceCoverage.getCoordinateReferenceSystem();
                 if (CRS.equalsIgnoreMetadata(crs, DefaultGeographicCRS.WGS84)) {
@@ -246,10 +245,10 @@ public class ChangeMatrixProcess implements GSProcess {
                     // reproject
                     MathTransform transform = CRS.findMathTransform(DefaultGeographicCRS.WGS84, crs,  true);
                     if (transform.isIdentity()) {
-                        pbj.setParameter("ROI", prepareROI(roi, mt2D));
+                        pbj.setParameter("ROI", prepareROIGeometry(roi, mt2D));
                     } else {
                         Geometry roiPrj = JTS.transform(roi, transform);
-						pbj.setParameter("ROI", prepareROI(roiPrj, mt2D));
+			pbj.setParameter("ROI", prepareROIGeometry(roiPrj, mt2D));
                     }
                 }
             }
@@ -287,7 +286,7 @@ public class ChangeMatrixProcess implements GSProcess {
     		 * LOG into the DB
     		 */
             filter = ff.equals(ff.property("ftUUID"), ff.literal(uuid.toString()));
-            features = wfsLogProcess.execute(features, typeName, wsName, storeName, filter, true, new NullProgressListener());
+            //features = wfsLogProcess.execute(features, typeName, wsName, storeName, filter, true, new NullProgressListener());
             
             if (features == null || features.isEmpty())
     		{
@@ -397,7 +396,7 @@ public class ChangeMatrixProcess implements GSProcess {
             ListFeatureCollection output = new ListFeatureCollection(features.getSchema());
             output.add(feature);
     		
-    		features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false, new NullProgressListener());
+    		//features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false, new NullProgressListener());
 
             // //////////////////////////////////////////////////////////////////////
             // Return the computed Change Matrix  ...
@@ -424,7 +423,7 @@ public class ChangeMatrixProcess implements GSProcess {
                 ListFeatureCollection output = new ListFeatureCollection(features.getSchema());
                 output.add(feature);
         		
-        		features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false, new NullProgressListener());
+        		//features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false, new NullProgressListener());
         	}
 
         	throw new WPSException("Could process request ", e);
@@ -455,7 +454,24 @@ public class ChangeMatrixProcess implements GSProcess {
                 .inverse(), null, true, 1);
         return new ROIShape(cropRoiLS2);
     }
-
+    
+    
+    /**
+     * Transform the provided {@link Geometry} in world coordinates into
+     * 
+     * @param roi
+     * @param gridToWorld
+     * @return
+     * @throws Exception
+     */
+    private static ROI prepareROIGeometry(Geometry roi, AffineTransform gridToWorld) throws Exception {
+        
+        Geometry projected = JTS.transform(roi, ProjectiveTransform.create(gridToWorld)
+                .inverse());
+        
+        return new ROIGeometry(projected);
+    }
+    
     /**
      * Replace or add the provided parameter in the read parameters
      */
