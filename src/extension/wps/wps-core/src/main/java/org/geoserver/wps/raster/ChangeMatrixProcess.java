@@ -44,7 +44,9 @@ import org.geoserver.wps.gs.ToFeature;
 import org.geoserver.wps.ppio.FeatureAttribute;
 import org.geotools.coverage.grid.GridCoverage2D;
 import org.geotools.coverage.grid.GridCoverageFactory;
+import org.geotools.coverage.grid.GridGeometry2D;
 import org.geotools.coverage.grid.io.AbstractGridCoverage2DReader;
+import org.geotools.coverage.grid.io.AbstractGridFormat;
 import org.geotools.data.DataSourceException;
 import org.geotools.data.collection.ListFeatureCollection;
 import org.geotools.data.simple.SimpleFeatureCollection;
@@ -52,7 +54,9 @@ import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.factory.GeoTools;
 import org.geotools.factory.Hints;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
+import org.geotools.gce.geotiff.GeoTiffWriter;
 import org.geotools.gce.imagemosaic.ImageMosaicFormat;
+import org.geotools.geometry.Envelope2D;
 import org.geotools.geometry.jts.JTS;
 import org.geotools.geometry.jts.LiteShape2;
 import org.geotools.image.jai.Registry;
@@ -82,9 +86,11 @@ import org.opengis.parameter.ParameterDescriptor;
 import org.opengis.parameter.ParameterValue;
 import org.opengis.parameter.ParameterValueGroup;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
+import org.opengis.referencing.datum.PixelInCell;
 import org.opengis.referencing.operation.MathTransform;
 import org.vfny.geoserver.global.GeoserverDataDirectory;
 
+import com.vividsolutions.jts.geom.Envelope;
 import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.GeometryCollection;
 import com.vividsolutions.jts.geom.GeometryFactory;
@@ -101,18 +107,19 @@ import com.vividsolutions.jts.geom.PrecisionModel;
 @DescribeProcess(title = "ChangeMatrix", description = "Compute the ChangeMatrix between two coverages")
 public class ChangeMatrixProcess implements GSProcess {
 
-	static {
+    static {
         Registry.registerRIF(JAI.getDefaultInstance(), new ChangeMatrixDescriptor(),
                 new ChangeMatrixRIF(), Registry.JAI_TOOLS_PRODUCT);
     }
 
     private final static boolean DEBUG = Boolean.getBoolean("org.geoserver.wps.debug");
 
-	private static final int PIXEL_MULTY_ARG_INDEX = 100;
+    private static final int PIXEL_MULTY_ARG_INDEX = 100;
 
-	private static final FilterFactory ff = CommonFactoryFinder.getFilterFactory(null);
-	
-	private static final GeometryFactory GEOMETRY_FACTORY = new GeometryFactory(new PrecisionModel());
+    private static final FilterFactory ff = CommonFactoryFinder.getFilterFactory(null);
+
+    private static final GeometryFactory GEOMETRY_FACTORY = new GeometryFactory(
+            new PrecisionModel());
 
     private Catalog catalog;
 
@@ -146,7 +153,7 @@ public class ChangeMatrixProcess implements GSProcess {
         if (DEBUG) {
             return getTestMap();
         }
-        
+
         // get the original Coverages
         CoverageInfo ciReference = catalog.getCoverageByName(referenceName);
         if (ciReference == null) {
@@ -154,40 +161,112 @@ public class ChangeMatrixProcess implements GSProcess {
         }
 
         // ///////////////////////////////////////////////
-		// ChangeMatrix outcome variables ...
+        // ChangeMatrix outcome variables ...
         RenderedOp result = null;
         GridCoverage2D nowCoverage = null;
         GridCoverage2D referenceCoverage = null;
-		// ///////////////////////////////////////////////
+        // ///////////////////////////////////////////////
 
         // ///////////////////////////////////////////////
-		// Logging to WFS variables ...
-		final String wsName = ciReference.getNamespace().getPrefix();
-		final UUID uuid = UUID.randomUUID();
-		SimpleFeatureCollection features = null;
-		Filter filter = null;
-		ToFeature toFeatureProcess = new ToFeature();
-        //WFSLog wfsLogProcess = new WFSLog(geoserver);
-		// ///////////////////////////////////////////////
-        
+        // Logging to WFS variables ...
+        final String wsName = ciReference.getNamespace().getPrefix();
+        final UUID uuid = UUID.randomUUID();
+        SimpleFeatureCollection features = null;
+        Filter filter = null;
+        ToFeature toFeatureProcess = new ToFeature();
+        // WFSLog wfsLogProcess = new WFSLog(geoserver);
+        // ///////////////////////////////////////////////
+
         try {
+
             // read reference coverage
             GridCoverageReader referenceReader = ciReference.getGridCoverageReader(null, null);
             ParameterValueGroup readParametersDescriptor = referenceReader.getFormat()
                     .getReadParameters();
+
             // get params for this coverage and override what's needed
             Map<String, Serializable> defaultParams = ciReference.getParameters();
             GeneralParameterValue[] params = CoverageUtils.getParameters(readParametersDescriptor,
                     defaultParams, false);
+
+            // now perform the operation
+            final ChangeMatrix cm = new ChangeMatrix(classes);
+            final ParameterBlockJAI pbj = new ParameterBlockJAI("ChangeMatrix");
+
+            pbj.setParameter("result", cm);
+            pbj.setParameter(
+                    ChangeMatrixDescriptor.PARAM_NAMES[ChangeMatrixDescriptor.PIXEL_MULTY_ARG_INDEX],
+                    PIXEL_MULTY_ARG_INDEX);
+
+            GridGeometry2D gridROI = null;
+
+            // handle Region Of Interest
+            if (roi != null) {
+                if (roi instanceof GeometryCollection) {
+                    List<Polygon> geomPolys = new ArrayList<Polygon>();
+                    for (int g = 0; g < ((GeometryCollection) roi).getNumGeometries(); g++) {
+                        extractPolygons(geomPolys, ((GeometryCollection) roi).getGeometryN(g));
+                    }
+
+                    if (geomPolys.size() == 0) {
+                        roi = GEOMETRY_FACTORY.createPolygon(null, null);
+                    } else if (geomPolys.size() == 1) {
+                        roi = geomPolys.get(0);
+                    } else {
+                        roi = roi.getFactory().createMultiPolygon(
+                                geomPolys.toArray(new Polygon[geomPolys.size()]));
+                    }
+                }
+
+                // Geometry associated with the ROI
+                Geometry roiPrj = null;
+
+                //
+                // GRID TO WORLD preparation from reference
+                //
+                final AffineTransform gridToWorldCorner = (AffineTransform) ((GridGeometry2D) ciReference
+                        .getGrid()).getGridToCRS2D(PixelOrientation.UPPER_LEFT);
+
+                // check if we need to reproject the ROI from WGS84 (standard in the input) to the reference CRS
+                final CoordinateReferenceSystem crs = ciReference.getCRS();
+                if (CRS.equalsIgnoreMetadata(crs, DefaultGeographicCRS.WGS84)) {
+                    roiPrj = roi;
+                    pbj.setParameter("ROI", CoverageUtilities.prepareROI(roi, gridToWorldCorner));
+                } else {
+                    // reproject
+                    MathTransform transform = CRS.findMathTransform(DefaultGeographicCRS.WGS84,
+                            crs, true);
+                    if (transform.isIdentity()) {
+                        roiPrj = roi;
+                    } else {
+                        roiPrj = JTS.transform(roi, transform);
+                    }
+                    pbj.setParameter("ROI", prepareROIGeometry(roiPrj, gridToWorldCorner));
+                }
+
+                // Creation of a GridGeometry object used for forcing the reader
+                Envelope envelope = roiPrj.getEnvelopeInternal();
+                // create with supplied crs
+                Envelope2D bounds = JTS.getEnvelope2D(envelope, crs);
+                // Creation of a GridGeometry2D instance used for cropping the input images
+                gridROI = new GridGeometry2D(PixelInCell.CELL_CORNER,
+                        (MathTransform) gridToWorldCorner, bounds, null);
+            }
+
             // merge filter
             params = replaceParameter(params, referenceFilter, ImageMosaicFormat.FILTER);
             // merge USE_JAI_IMAGEREAD to false if needed
             params = replaceParameter(params,
                     ImageMosaicFormat.USE_JAI_IMAGEREAD.getDefaultValue(),
                     ImageMosaicFormat.USE_JAI_IMAGEREAD);
-            // TODO add tiling, reuse standard values from config
-            // TODO add background value, reuse standard values from config
+            if (gridROI != null) {
+                params = replaceParameter(params, gridROI, AbstractGridFormat.READ_GRIDGEOMETRY2D);
+            }
             referenceCoverage = (GridCoverage2D) referenceReader.read(params);
+            GeoTiffWriter geoTiffWriter = new GeoTiffWriter(new File(
+                    "/home/geosolutions/reference.tif"));
+            geoTiffWriter.write(referenceCoverage, null);
+            geoTiffWriter.dispose();
 
             // read now coverage
             readParametersDescriptor = referenceReader.getFormat().getReadParameters();
@@ -201,98 +280,61 @@ public class ChangeMatrixProcess implements GSProcess {
             params = replaceParameter(params,
                     ImageMosaicFormat.USE_JAI_IMAGEREAD.getDefaultValue(),
                     ImageMosaicFormat.USE_JAI_IMAGEREAD);
+            if (gridROI != null) {
+                params = replaceParameter(params, gridROI, AbstractGridFormat.READ_GRIDGEOMETRY2D);
+            }
             // TODO add tiling, reuse standard values from config
             // TODO add background value, reuse standard values from config
             nowCoverage = (GridCoverage2D) referenceReader.read(params);
+            geoTiffWriter = new GeoTiffWriter(new File("/home/geosolutions/nowCoverage.tif"));
+            geoTiffWriter.write(nowCoverage, null);
+            geoTiffWriter.dispose();
 
-            // now perform the operation
-            final ChangeMatrix cm = new ChangeMatrix(classes);
-            final ParameterBlockJAI pbj = new ParameterBlockJAI("ChangeMatrix");
+            // Setting of the sources
             pbj.addSource(referenceCoverage.getRenderedImage());
             pbj.addSource(nowCoverage.getRenderedImage());
-            pbj.setParameter("result", cm);
-            pbj.setParameter(ChangeMatrixDescriptor.PARAM_NAMES[ChangeMatrixDescriptor.PIXEL_MULTY_ARG_INDEX], PIXEL_MULTY_ARG_INDEX);
 
-            // handle Region Of Interest
-            if (roi != null) {
-                if (roi instanceof GeometryCollection) {
-    				List<Polygon> geomPolys = new ArrayList<Polygon>();
-    				for (int g = 0; g < ((GeometryCollection) roi)
-    						.getNumGeometries(); g++) {
-    					extractPolygons(geomPolys, ((GeometryCollection) roi)
-    							.getGeometryN(g));
-    				}
-
-    				if (geomPolys.size() == 0) {
-    					roi = GEOMETRY_FACTORY.createPolygon(null, null);
-    				} else if (geomPolys.size() == 1) {
-    					roi = geomPolys.get(0);
-    				} else {
-    					roi = roi.getFactory().createMultiPolygon(geomPolys.toArray(new Polygon[geomPolys.size()]));
-    				}
-    			}
-
-                //
-                // GRID TO WORLD preparation from reference
-                //
-                final AffineTransform mt2D = (AffineTransform) referenceCoverage.getGridGeometry().getGridToCRS2D(PixelOrientation.UPPER_LEFT);
-                
-                // check if we need to reproject the ROI from WGS84 (standard in the input) to the reference CRS
-                final CoordinateReferenceSystem crs = referenceCoverage.getCoordinateReferenceSystem();
-                if (CRS.equalsIgnoreMetadata(crs, DefaultGeographicCRS.WGS84)) {
-                    pbj.setParameter("ROI", CoverageUtilities.prepareROI(roi, mt2D));
-                } else {
-                    // reproject
-                    MathTransform transform = CRS.findMathTransform(DefaultGeographicCRS.WGS84, crs,  true);
-                    if (transform.isIdentity()) {
-                        pbj.setParameter("ROI", prepareROIGeometry(roi, mt2D));
-                    } else {
-                        Geometry roiPrj = JTS.transform(roi, transform);
-			pbj.setParameter("ROI", prepareROIGeometry(roiPrj, mt2D));
-                    }
-                }
-            }
-            
             // //////////////////////////////////////////////////////////////////////
             // Logging to WFS ...
             // //////////////////////////////////////////////////////////////////////
-    		/**
-    		 * Convert the spread attributes into a FeatureType
-    		 */
-    		List<FeatureAttribute> attributes = new ArrayList<FeatureAttribute>();
+            /**
+             * Convert the spread attributes into a FeatureType
+             */
+            List<FeatureAttribute> attributes = new ArrayList<FeatureAttribute>();
 
-    		attributes.add(new FeatureAttribute("ftUUID", uuid.toString()));
-    		attributes.add(new FeatureAttribute("runBegin", new Date()));
-    		attributes.add(new FeatureAttribute("runEnd", new Date()));
-    		attributes.add(new FeatureAttribute("itemStatus", "RUNNING"));
-    		attributes.add(new FeatureAttribute("itemStatusMessage", "Instrumented by Server"));
-    		attributes.add(new FeatureAttribute("referenceName", referenceName));
-    		attributes.add(new FeatureAttribute("defaultStyle", defaultStyle));
-    		attributes.add(new FeatureAttribute("referenceFilter", referenceFilter.toString()));
-    		attributes.add(new FeatureAttribute("nowFilter", nowFilter.toString()));
-    		attributes.add(new FeatureAttribute("roi", roi.getEnvelope()));
-			attributes.add(new FeatureAttribute("wsName", wsName));
-    		attributes.add(new FeatureAttribute("layerName", ""));
-    		attributes.add(new FeatureAttribute("changeMatrix", ""));
+            attributes.add(new FeatureAttribute("ftUUID", uuid.toString()));
+            attributes.add(new FeatureAttribute("runBegin", new Date()));
+            attributes.add(new FeatureAttribute("runEnd", new Date()));
+            attributes.add(new FeatureAttribute("itemStatus", "RUNNING"));
+            attributes.add(new FeatureAttribute("itemStatusMessage", "Instrumented by Server"));
+            attributes.add(new FeatureAttribute("referenceName", referenceName));
+            attributes.add(new FeatureAttribute("defaultStyle", defaultStyle));
+            attributes.add(new FeatureAttribute("referenceFilter", referenceFilter.toString()));
+            attributes.add(new FeatureAttribute("nowFilter", nowFilter.toString()));
+            attributes.add(new FeatureAttribute("roi", roi.getEnvelope()));
+            attributes.add(new FeatureAttribute("wsName", wsName));
+            attributes.add(new FeatureAttribute("layerName", ""));
+            attributes.add(new FeatureAttribute("changeMatrix", ""));
 
-    		features = toFeatureProcess.execute(JTS.toGeometry(ciReference.getNativeBoundingBox()), ciReference.getCRS(), typeName, attributes, null);
-    		
-    		if (features == null || features.isEmpty())
-    		{
-    			throw new ProcessException("There was an error while converting attributes into FeatureType.");
-    		}
+            features = toFeatureProcess.execute(JTS.toGeometry(ciReference.getNativeBoundingBox()),
+                    ciReference.getCRS(), typeName, attributes, null);
 
-    		/**
-    		 * LOG into the DB
-    		 */
+            if (features == null || features.isEmpty()) {
+                throw new ProcessException(
+                        "There was an error while converting attributes into FeatureType.");
+            }
+
+            /**
+             * LOG into the DB
+             */
             filter = ff.equals(ff.property("ftUUID"), ff.literal(uuid.toString()));
-            //features = wfsLogProcess.execute(features, typeName, wsName, storeName, filter, true, new NullProgressListener());
-            
-            if (features == null || features.isEmpty())
-    		{
-    			throw new ProcessException("There was an error while logging FeatureType into the storage.");
-    		}
-            
+            // features = wfsLogProcess.execute(features, typeName, wsName, storeName, filter, true, new NullProgressListener());
+
+            if (features == null || features.isEmpty()) {
+                throw new ProcessException(
+                        "There was an error while logging FeatureType into the storage.");
+            }
+
             // //////////////////////////////////////////////////////////////////////
             // Compute the Change Matrix ...
             // //////////////////////////////////////////////////////////////////////
@@ -339,94 +381,99 @@ public class ChangeMatrixProcess implements GSProcess {
             // //////////////////////////////////////////////////////////////////////
             // Import into GeoServer the new raster 'result' ...
             // //////////////////////////////////////////////////////////////////////
-    		/**
-    		 * create the final coverage using final envelope 
-    		 */
+            /**
+             * create the final coverage using final envelope
+             */
             // hints for tiling
             final Hints hints = GeoTools.getDefaultHints().clone();
-            
-            final String rasterName = ciReference.getName() + "_cm_" + System.nanoTime();
-			final GridCoverage2D retValue = new GridCoverageFactory(hints).create(
-                    rasterName, result, referenceCoverage.getEnvelope());
-            
-            // TODO: CROP THE COVERAGE FIRST...
-			
-			/**
-			 * import the new coverage into the GeoServer catalog 
-			 */
-            ImportProcess importProcess = new ImportProcess(catalog);
-            importProcess.execute(null, retValue, wsName, null, retValue.getName().toString(), retValue.getCoordinateReferenceSystem(), null, defaultStyle);
 
-			/**
-			 * Add Overviews...
-			 */
+            final String rasterName = ciReference.getName() + "_cm_" + System.nanoTime();
+            final GridCoverage2D retValue = new GridCoverageFactory(hints).create(rasterName,
+                    result, referenceCoverage.getEnvelope());
+
+            /**
+             * import the new coverage into the GeoServer catalog
+             */
+            ImportProcess importProcess = new ImportProcess(catalog);
+            importProcess.execute(null, retValue, wsName, null, retValue.getName().toString(),
+                    retValue.getCoordinateReferenceSystem(), null, defaultStyle);
+
+            /**
+             * Add Overviews...
+             */
             CoverageStoreInfo importedCoverageInfo = catalog.getCoverageStoreByName(rasterName);
             File tiffFile = GeoserverDataDirectory.findDataFile(importedCoverageInfo.getURL());
             if (tiffFile != null && tiffFile.exists() && tiffFile.isFile() && tiffFile.canWrite()) {
-            	try {
-					generateOverviews(importedCoverageInfo.getFormat().getReader(tiffFile));
-				} catch (DataSourceException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
+                try {
+                    generateOverviews(importedCoverageInfo.getFormat().getReader(tiffFile));
+                } catch (DataSourceException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
             }
-			
-			/**
-			 * creating the ChangeMatrix grid 
-			 */
+
+            /**
+             * creating the ChangeMatrix grid
+             */
             final ChangeMatrixDTO changeMatrix = new ChangeMatrixDTO(cm, classes, rasterName);
-            
+
             // //////////////////////////////////////////////////////////////////////
             // Updating WFS ...
             // //////////////////////////////////////////////////////////////////////
             /**
-    		 * Update Feature Attributes and LOG into the DB
-    		 */
+             * Update Feature Attributes and LOG into the DB
+             */
             filter = ff.equals(ff.property("ftUUID"), ff.literal(uuid.toString()));
 
-            SimpleFeature feature = SimpleFeatureBuilder.copy(features.subCollection(filter).toArray(new SimpleFeature[1])[0]);
-            
+            SimpleFeature feature = SimpleFeatureBuilder.copy(features.subCollection(filter)
+                    .toArray(new SimpleFeature[1])[0]);
+
             // build the feature
             feature.setAttribute("runEnd", new Date());
             feature.setAttribute("itemStatus", "COMPLETED");
-            feature.setAttribute("itemStatusMessage", "Change Matrix Process completed successfully");
+            feature.setAttribute("itemStatusMessage",
+                    "Change Matrix Process completed successfully");
             feature.setAttribute("layerName", rasterName);
             feature.setAttribute("changeMatrix", JSONSerializer.toJSON(changeMatrix).toString());
 
             ListFeatureCollection output = new ListFeatureCollection(features.getSchema());
             output.add(feature);
-    		
-    		//features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false, new NullProgressListener());
+
+            // features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false, new NullProgressListener());
 
             // //////////////////////////////////////////////////////////////////////
-            // Return the computed Change Matrix  ...
+            // Return the computed Change Matrix ...
             // //////////////////////////////////////////////////////////////////////
             return changeMatrix;
         } catch (Exception e) {
 
-        	if (features != null) {
+            if (features != null) {
                 // //////////////////////////////////////////////////////////////////////
                 // Updating WFS ...
                 // //////////////////////////////////////////////////////////////////////
                 /**
-        		 * Update Feature Attributes and LOG into the DB
-        		 */
+                 * Update Feature Attributes and LOG into the DB
+                 */
                 filter = ff.equals(ff.property("ftUUID"), ff.literal(uuid.toString()));
 
-                SimpleFeature feature = SimpleFeatureBuilder.copy(features.subCollection(filter).toArray(new SimpleFeature[1])[0]);
-                
+                SimpleFeature feature = SimpleFeatureBuilder.copy(features.subCollection(filter)
+                        .toArray(new SimpleFeature[1])[0]);
+
                 // build the feature
                 feature.setAttribute("runEnd", new Date());
                 feature.setAttribute("itemStatus", "FAILED");
-                feature.setAttribute("itemStatusMessage", "There was an error while while processing Input parameters: "+e.getMessage());
-                
+                feature.setAttribute(
+                        "itemStatusMessage",
+                        "There was an error while while processing Input parameters: "
+                                + e.getMessage());
+
                 ListFeatureCollection output = new ListFeatureCollection(features.getSchema());
                 output.add(feature);
-        		
-        		//features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false, new NullProgressListener());
-        	}
 
-        	throw new WPSException("Could process request ", e);
+                // features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false, new NullProgressListener());
+            }
+
+            throw new WPSException("Could process request ", e);
         } finally {
             // clean up
             if (result != null) {
@@ -454,8 +501,7 @@ public class ChangeMatrixProcess implements GSProcess {
                 .inverse(), null, true, 1);
         return new ROIShape(cropRoiLS2);
     }
-    
-    
+
     /**
      * Transform the provided {@link Geometry} in world coordinates into
      * 
@@ -464,14 +510,14 @@ public class ChangeMatrixProcess implements GSProcess {
      * @return
      * @throws Exception
      */
-    private static ROI prepareROIGeometry(Geometry roi, AffineTransform gridToWorld) throws Exception {
-        
-        Geometry projected = JTS.transform(roi, ProjectiveTransform.create(gridToWorld)
-                .inverse());
-        
+    private static ROI prepareROIGeometry(Geometry roi, AffineTransform gridToWorld)
+            throws Exception {
+
+        Geometry projected = JTS.transform(roi, ProjectiveTransform.create(gridToWorld).inverse());
+
         return new ROIGeometry(projected);
     }
-    
+
     /**
      * Replace or add the provided parameter in the read parameters
      */
@@ -538,115 +584,109 @@ public class ChangeMatrixProcess implements GSProcess {
 
         return s;
     }
-    
+
     /**
      * @param geomPolys
      * @param geom
      */
-    public static void extractPolygons(Collection<Polygon> geomPolys, Geometry geom)
-    {
-        if (geom instanceof MultiPolygon)
-        {
-            for (int i = 0; i < ((MultiPolygon) geom).getNumGeometries(); i++)
-            {
+    public static void extractPolygons(Collection<Polygon> geomPolys, Geometry geom) {
+        if (geom instanceof MultiPolygon) {
+            for (int i = 0; i < ((MultiPolygon) geom).getNumGeometries(); i++) {
                 Geometry g = ((MultiPolygon) geom).getGeometryN(i);
-                if (g instanceof Polygon)
-                {
-                    if (g.getGeometryType().compareToIgnoreCase("Polygon") == 0)
-                    {
-                    	g.setSRID(geom.getSRID());
+                if (g instanceof Polygon) {
+                    if (g.getGeometryType().compareToIgnoreCase("Polygon") == 0) {
+                        g.setSRID(geom.getSRID());
                         geomPolys.add((Polygon) g);
                     }
                 }
             }
-        }
-        else if (geom instanceof Polygon)
-        {
-            if (geom.getGeometryType().compareToIgnoreCase("Polygon") == 0)
-            {
+        } else if (geom instanceof Polygon) {
+            if (geom.getGeometryType().compareToIgnoreCase("Polygon") == 0) {
                 geomPolys.add((Polygon) geom);
             }
         }
     }
-    
+
     /**
-	 * @param retValue 
-	 * @return the number of steps processed, or 0 if none was done, or -1 on error.
-     * @throws DataSourceException 
-	 */
-	public static int generateOverviews(AbstractGridCoverage2DReader abstractGridCoverage2DReader) throws DataSourceException {
-		final File geotiffFile = (File) abstractGridCoverage2DReader.getSource();
-		// ////
-		// Adding Overviews
-		// ////
+     * @param retValue
+     * @return the number of steps processed, or 0 if none was done, or -1 on error.
+     * @throws DataSourceException
+     */
+    public static int generateOverviews(AbstractGridCoverage2DReader abstractGridCoverage2DReader)
+            throws DataSourceException {
+        final File geotiffFile = (File) abstractGridCoverage2DReader.getSource();
+        // ////
+        // Adding Overviews
+        // ////
 
-		int tileH = 512;
-		int tileW = 512;
+        int tileH = 512;
+        int tileW = 512;
 
-		/** computing the number of steps **/
-		GridEnvelope gridRange = abstractGridCoverage2DReader.getOriginalGridRange();
+        /** computing the number of steps **/
+        GridEnvelope gridRange = abstractGridCoverage2DReader.getOriginalGridRange();
 
-		int height = gridRange.getSpan(1);
-		int width  = gridRange.getSpan(0);
+        int height = gridRange.getSpan(1);
+        int width = gridRange.getSpan(0);
 
-		int ratioH = (int) Math.ceil((1.0*height) / tileH);
-		int ratioW = (int) Math.ceil((1.0*width)  / tileW);
+        int ratioH = (int) Math.ceil((1.0 * height) / tileH);
+        int ratioW = (int) Math.ceil((1.0 * width) / tileW);
 
-		int nStepsH = 0;
-		int nStepsW = 0;
+        int nStepsH = 0;
+        int nStepsW = 0;
 
-		if (ratioH >= 2) {
-			nStepsH = (int) Math.floor(Math.log(ratioH) / Math.log(2));
-		}
+        if (ratioH >= 2) {
+            nStepsH = (int) Math.floor(Math.log(ratioH) / Math.log(2));
+        }
 
-		if (ratioW >= 2) {
-			nStepsW = (int) Math.floor(Math.log(ratioW) / Math.log(2));
-		}
+        if (ratioW >= 2) {
+            nStepsW = (int) Math.floor(Math.log(ratioW) / Math.log(2));
+        }
 
-		int numSteps = Math.min(nStepsH, nStepsW);
-		int downSampleSteps = 2;
+        int numSteps = Math.min(nStepsH, nStepsW);
+        int downSampleSteps = 2;
 
-		if (numSteps > 0){
-				final OverviewsEmbedder oe = new OverviewsEmbedder();
-				oe.setDownsampleStep(downSampleSteps);
-				oe.setNumSteps(numSteps);
-				oe.setScaleAlgorithm(OverviewsEmbedder.SubsampleAlgorithm.Average.toString());
-				oe.setTileCache(JAI.getDefaultInstance().getTileCache()); 
-				oe.setTileHeight(tileH);
-				oe.setTileWidth(tileW);
-				oe.setSourcePath(geotiffFile.getAbsolutePath());
+        if (numSteps > 0) {
+            final OverviewsEmbedder oe = new OverviewsEmbedder();
+            oe.setDownsampleStep(downSampleSteps);
+            oe.setNumSteps(numSteps);
+            oe.setScaleAlgorithm(OverviewsEmbedder.SubsampleAlgorithm.Average.toString());
+            oe.setTileCache(JAI.getDefaultInstance().getTileCache());
+            oe.setTileHeight(tileH);
+            oe.setTileWidth(tileW);
+            oe.setSourcePath(geotiffFile.getAbsolutePath());
 
-				EmbedderListener listener = new EmbedderListener(geotiffFile.getAbsolutePath());
-				//add logger/listener
-				oe.addProcessingEventListener(listener);
+            EmbedderListener listener = new EmbedderListener(geotiffFile.getAbsolutePath());
+            // add logger/listener
+            oe.addProcessingEventListener(listener);
 
-				//run
-				oe.run(); // should block until terminated
-				return listener.isSuccess()? numSteps : -1;
-		} else
-			return 0;
-	}
-	
-	static class EmbedderListener implements ProcessingEventListener {
-		final String filename;
-		boolean success = false;
+            // run
+            oe.run(); // should block until terminated
+            return listener.isSuccess() ? numSteps : -1;
+        } else
+            return 0;
+    }
 
-		public EmbedderListener(String filename) {
-			this.filename = filename;
-		}
+    static class EmbedderListener implements ProcessingEventListener {
+        final String filename;
 
-		public boolean isSuccess() {
-			return success;
-		}
+        boolean success = false;
 
-		public void exceptionOccurred(ExceptionEvent event) {
-			success = false;
-		}
+        public EmbedderListener(String filename) {
+            this.filename = filename;
+        }
 
-		public void getNotification(ProcessingEvent event) {
-			if(event.getPercentage() == 100.0) {
-				success = true;
-			}
-		}
-	}
+        public boolean isSuccess() {
+            return success;
+        }
+
+        public void exceptionOccurred(ExceptionEvent event) {
+            success = false;
+        }
+
+        public void getNotification(ProcessingEvent event) {
+            if (event.getPercentage() == 100.0) {
+                success = true;
+            }
+        }
+    }
 }
