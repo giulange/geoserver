@@ -54,7 +54,6 @@ import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.factory.GeoTools;
 import org.geotools.factory.Hints;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
-import org.geotools.gce.geotiff.GeoTiffWriter;
 import org.geotools.gce.imagemosaic.ImageMosaicFormat;
 import org.geotools.geometry.Envelope2D;
 import org.geotools.geometry.jts.JTS;
@@ -263,10 +262,6 @@ public class ChangeMatrixProcess implements GSProcess {
                 params = replaceParameter(params, gridROI, AbstractGridFormat.READ_GRIDGEOMETRY2D);
             }
             referenceCoverage = (GridCoverage2D) referenceReader.read(params);
-            GeoTiffWriter geoTiffWriter = new GeoTiffWriter(new File(
-                    "/home/geosolutions/reference.tif"));
-            geoTiffWriter.write(referenceCoverage, null);
-            geoTiffWriter.dispose();
 
             // read now coverage
             readParametersDescriptor = referenceReader.getFormat().getReadParameters();
@@ -286,9 +281,6 @@ public class ChangeMatrixProcess implements GSProcess {
             // TODO add tiling, reuse standard values from config
             // TODO add background value, reuse standard values from config
             nowCoverage = (GridCoverage2D) referenceReader.read(params);
-            geoTiffWriter = new GeoTiffWriter(new File("/home/geosolutions/nowCoverage.tif"));
-            geoTiffWriter.write(nowCoverage, null);
-            geoTiffWriter.dispose();
 
             // Setting of the sources
             pbj.addSource(referenceCoverage.getRenderedImage());
