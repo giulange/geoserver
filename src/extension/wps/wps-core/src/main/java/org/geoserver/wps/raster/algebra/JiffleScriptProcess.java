@@ -30,7 +30,6 @@ import org.jaitools.jiffle.JiffleBuilder;
  * select which band of the input coverage must be elaborated, by default the first image is calculated.
  * 
  * @author Nicola Lagomarsini GeoSolutions SAS
- * 
  */
 public class JiffleScriptProcess implements GSProcess {
 
@@ -56,15 +55,14 @@ public class JiffleScriptProcess implements GSProcess {
         // create jiffle script
         final JiffleBuilder jb = new JiffleBuilder();
         // Going to check if we need to substitute some value from the environment
-        if (env!=null && env.length()>0)
-        {
-        	String[] envSlices = env.split(",");
-        	for(String kvp : envSlices) {
-        		String[] envData = kvp.split("=");
-        		if (envData.length==2) {
-        			script = script.replace("{"+envData[0]+"}", envData[1]);
-        		}
-        	}
+        if (env != null && env.length() > 0) {
+            String[] envSlices = env.split(",");
+            for (String kvp : envSlices) {
+                String[] envData = kvp.split("=");
+                if (envData.length == 2) {
+                    script = script.replace("{" + envData[0] + "}", envData[1]);
+                }
+            }
         }
         // We pass the script to the builder and associate the source images
         // with the variable names. Note the use of method chaining.
@@ -73,7 +71,7 @@ public class JiffleScriptProcess implements GSProcess {
         RenderedImage coverageIMG = coverage.getRenderedImage();
         // Number of Bands of the input coverage
         int numBands = coverageIMG.getSampleModel().getNumBands();
-        
+
         RenderedImage input;
         // Check on the input bands
         if (numBands == 1) {
@@ -131,7 +129,7 @@ public class JiffleScriptProcess implements GSProcess {
             // Coverage disposal
             coverage.dispose(true);
         }
-        
+
         // If an exception is thrown, null is returned
         return null;
     }
