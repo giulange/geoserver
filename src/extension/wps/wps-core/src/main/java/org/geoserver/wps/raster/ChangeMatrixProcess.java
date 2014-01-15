@@ -59,6 +59,7 @@ import org.geotools.gce.imagemosaic.ImageMosaicFormat;
 import org.geotools.geometry.Envelope2D;
 import org.geotools.geometry.jts.JTS;
 import org.geotools.geometry.jts.LiteShape2;
+import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.geotools.image.jai.Registry;
 import org.geotools.process.ProcessException;
 import org.geotools.process.factory.DescribeParameter;
@@ -175,6 +176,7 @@ public class ChangeMatrixProcess implements GSProcess {
         SimpleFeatureCollection features = null;
         Filter filter = null;
         ToFeature toFeatureProcess = new ToFeature();
+
         WFSLog wfsLogProcess = new WFSLog(geoserver);
         // ///////////////////////////////////////////////
 
@@ -245,6 +247,28 @@ public class ChangeMatrixProcess implements GSProcess {
                     pbj.setParameter("ROI", prepareROIGeometry(roiPrj, gridToWorldCorner));
                 }
 
+                //
+                // Make sure the provided roi intersects the layer BBOX in wgs84
+                //
+                final ReferencedEnvelope wgs84BBOX = ciReference.getLatLonBoundingBox();
+                roi = roi.intersection(JTS.toGeometry(wgs84BBOX));
+                if (roi.isEmpty()) {
+                    throw new WPSException(
+                            "The provided ROI does not intersect the reference data BBOX: ",
+                            roi.toText());
+                }
+
+                //
+                // Make sure the provided area intersects the layer BBOX in the layer CRS
+                //
+                final ReferencedEnvelope crsBBOX = ciReference.boundingBox();
+                roiPrj = roiPrj.intersection(JTS.toGeometry(crsBBOX));
+                if (roiPrj.isEmpty()) {
+                    throw new WPSException(
+                            "The provided ROI does not intersect the reference data BBOX: ",
+                            roiPrj.toText());
+                }
+
                 // Creation of a GridGeometry object used for forcing the reader
                 Envelope envelope = roiPrj.getEnvelopeInternal();
                 // create with supplied crs
@@ -265,6 +289,10 @@ public class ChangeMatrixProcess implements GSProcess {
             }
             referenceCoverage = (GridCoverage2D) referenceReader.read(params);
 
+            if (referenceCoverage == null) {
+                throw new WPSException("Input Reference Coverage not found");
+            }
+
             // read now coverage
             readParametersDescriptor = referenceReader.getFormat().getReadParameters();
             // get params for this coverage and override what's needed
@@ -283,6 +311,10 @@ public class ChangeMatrixProcess implements GSProcess {
             // TODO add tiling, reuse standard values from config
             // TODO add background value, reuse standard values from config
             nowCoverage = (GridCoverage2D) referenceReader.read(params);
+
+            if (nowCoverage == null) {
+                throw new WPSException("Input Current Coverage not found");
+            }
 
             // Setting of the sources
             pbj.addSource(referenceCoverage.getRenderedImage());
@@ -322,6 +354,7 @@ public class ChangeMatrixProcess implements GSProcess {
              * LOG into the DB
              */
             filter = ff.equals(ff.property("ftUUID"), ff.literal(uuid.toString()));
+
             features = wfsLogProcess.execute(features, typeName, wsName, storeName, filter, true,
                     new NullProgressListener());
 
