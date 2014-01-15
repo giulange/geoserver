@@ -41,6 +41,7 @@ import org.geoserver.data.util.CoverageUtils;
 import org.geoserver.wps.WPSException;
 import org.geoserver.wps.gs.ImportProcess;
 import org.geoserver.wps.gs.ToFeature;
+import org.geoserver.wps.gs.WFSLog;
 import org.geoserver.wps.ppio.FeatureAttribute;
 import org.geotools.coverage.grid.GridCoverage2D;
 import org.geotools.coverage.grid.GridCoverageFactory;
@@ -54,7 +55,6 @@ import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.factory.GeoTools;
 import org.geotools.factory.Hints;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
-import org.geotools.gce.geotiff.GeoTiffWriter;
 import org.geotools.gce.imagemosaic.ImageMosaicFormat;
 import org.geotools.geometry.Envelope2D;
 import org.geotools.geometry.jts.JTS;
@@ -71,6 +71,7 @@ import org.geotools.referencing.CRS;
 import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.geotools.referencing.operation.transform.ProjectiveTransform;
 import org.geotools.resources.image.ImageUtilities;
+import org.geotools.util.NullProgressListener;
 import org.geotools.utils.imageoverviews.OverviewsEmbedder;
 import org.geotools.utils.progress.ExceptionEvent;
 import org.geotools.utils.progress.ProcessingEvent;
@@ -176,7 +177,7 @@ public class ChangeMatrixProcess implements GSProcess {
         Filter filter = null;
         ToFeature toFeatureProcess = new ToFeature();
 
-        // WFSLog wfsLogProcess = new WFSLog(geoserver);
+        WFSLog wfsLogProcess = new WFSLog(geoserver);
         // ///////////////////////////////////////////////
 
         try {
@@ -259,15 +260,15 @@ public class ChangeMatrixProcess implements GSProcess {
 
                 //
                 // Make sure the provided area intersects the layer BBOX in the layer CRS
-                //                
+                //
                 final ReferencedEnvelope crsBBOX = ciReference.boundingBox();
                 roiPrj = roiPrj.intersection(JTS.toGeometry(crsBBOX));
-                if(roiPrj.isEmpty()){
+                if (roiPrj.isEmpty()) {
                     throw new WPSException(
                             "The provided ROI does not intersect the reference data BBOX: ",
                             roiPrj.toText());
-                }               
-                
+                }
+
                 // Creation of a GridGeometry object used for forcing the reader
                 Envelope envelope = roiPrj.getEnvelopeInternal();
                 // create with supplied crs
@@ -288,10 +289,10 @@ public class ChangeMatrixProcess implements GSProcess {
             }
             referenceCoverage = (GridCoverage2D) referenceReader.read(params);
 
-            if(referenceCoverage == null){
+            if (referenceCoverage == null) {
                 throw new WPSException("Input Reference Coverage not found");
             }
-            
+
             // read now coverage
             readParametersDescriptor = referenceReader.getFormat().getReadParameters();
             // get params for this coverage and override what's needed
@@ -311,10 +312,10 @@ public class ChangeMatrixProcess implements GSProcess {
             // TODO add background value, reuse standard values from config
             nowCoverage = (GridCoverage2D) referenceReader.read(params);
 
-            if(nowCoverage == null){
+            if (nowCoverage == null) {
                 throw new WPSException("Input Current Coverage not found");
             }
-            
+
             // Setting of the sources
             pbj.addSource(referenceCoverage.getRenderedImage());
             pbj.addSource(nowCoverage.getRenderedImage());
@@ -354,7 +355,8 @@ public class ChangeMatrixProcess implements GSProcess {
              */
             filter = ff.equals(ff.property("ftUUID"), ff.literal(uuid.toString()));
 
-            // features = wfsLogProcess.execute(features, typeName, wsName, storeName, filter, true, new NullProgressListener());
+            features = wfsLogProcess.execute(features, typeName, wsName, storeName, filter, true,
+                    new NullProgressListener());
 
             if (features == null || features.isEmpty()) {
                 throw new ProcessException(
@@ -465,7 +467,8 @@ public class ChangeMatrixProcess implements GSProcess {
             ListFeatureCollection output = new ListFeatureCollection(features.getSchema());
             output.add(feature);
 
-            // features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false, new NullProgressListener());
+            features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false,
+                    new NullProgressListener());
 
             // //////////////////////////////////////////////////////////////////////
             // Return the computed Change Matrix ...
@@ -496,7 +499,8 @@ public class ChangeMatrixProcess implements GSProcess {
                 ListFeatureCollection output = new ListFeatureCollection(features.getSchema());
                 output.add(feature);
 
-                // features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false, new NullProgressListener());
+                features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter,
+                        false, new NullProgressListener());
             }
 
             throw new WPSException("Could process request ", e);
