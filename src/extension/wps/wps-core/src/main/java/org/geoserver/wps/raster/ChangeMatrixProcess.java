@@ -54,6 +54,7 @@ import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.factory.GeoTools;
 import org.geotools.factory.Hints;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
+import org.geotools.gce.geotiff.GeoTiffWriter;
 import org.geotools.gce.imagemosaic.ImageMosaicFormat;
 import org.geotools.geometry.Envelope2D;
 import org.geotools.geometry.jts.JTS;
@@ -173,6 +174,7 @@ public class ChangeMatrixProcess implements GSProcess {
         SimpleFeatureCollection features = null;
         Filter filter = null;
         ToFeature toFeatureProcess = new ToFeature();
+
         // WFSLog wfsLogProcess = new WFSLog(geoserver);
         // ///////////////////////////////////////////////
 
@@ -320,7 +322,9 @@ public class ChangeMatrixProcess implements GSProcess {
              * LOG into the DB
              */
             filter = ff.equals(ff.property("ftUUID"), ff.literal(uuid.toString()));
+
             // features = wfsLogProcess.execute(features, typeName, wsName, storeName, filter, true, new NullProgressListener());
+
 
             if (features == null || features.isEmpty()) {
                 throw new ProcessException(
@@ -430,6 +434,7 @@ public class ChangeMatrixProcess implements GSProcess {
 
             ListFeatureCollection output = new ListFeatureCollection(features.getSchema());
             output.add(feature);
+
 
             // features = wfsLogProcess.execute(output, typeName, wsName, storeName, filter, false, new NullProgressListener());
 
