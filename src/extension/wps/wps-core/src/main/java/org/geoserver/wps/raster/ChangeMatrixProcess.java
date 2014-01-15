@@ -221,6 +221,17 @@ public class ChangeMatrixProcess implements GSProcess {
                     }
                 }
 
+                //
+                // Make sure the provided roi intersects the layer BBOX in wgs84
+                //
+                final ReferencedEnvelope wgs84BBOX = ciReference.getLatLonBoundingBox();
+                roi = roi.intersection(JTS.toGeometry(wgs84BBOX));
+                if (roi.isEmpty()) {
+                    throw new WPSException(
+                            "The provided ROI does not intersect the reference data BBOX: ",
+                            roi.toText());
+                }
+                
                 // Geometry associated with the ROI
                 Geometry roiPrj = null;
 
@@ -246,18 +257,6 @@ public class ChangeMatrixProcess implements GSProcess {
                     }
                     pbj.setParameter("ROI", prepareROIGeometry(roiPrj, gridToWorldCorner));
                 }
-
-                //
-                // Make sure the provided roi intersects the layer BBOX in wgs84
-                //
-                final ReferencedEnvelope wgs84BBOX = ciReference.getLatLonBoundingBox();
-                roi = roi.intersection(JTS.toGeometry(wgs84BBOX));
-                if (roi.isEmpty()) {
-                    throw new WPSException(
-                            "The provided ROI does not intersect the reference data BBOX: ",
-                            roi.toText());
-                }
-
                 //
                 // Make sure the provided area intersects the layer BBOX in the layer CRS
                 //
