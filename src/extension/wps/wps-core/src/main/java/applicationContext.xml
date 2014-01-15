@@ -207,6 +207,9 @@
 		<constructor-arg index="0" ref="geoServer"/>
 	</bean>
 
+	<!-- 
+		<bean id="changeMatrix" class="org.geoserver.wps.raster.CudaChangeMatrixProcess">
+	-->
     <bean id="changeMatrix" class="org.geoserver.wps.raster.ChangeMatrixProcess">
       <constructor-arg index="0" ref="catalog"/>
       <constructor-arg index="1" ref="geoServer"/>

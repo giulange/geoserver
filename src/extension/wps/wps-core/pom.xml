@@ -169,6 +169,13 @@
 			<artifactId>ant-launcher</artifactId>
 			<version>${ant.version}</version>
 		</dependency>
+		<dependency>
+        		<groupId>org.jcuda</groupId>
+			<artifactId>aggregation</artifactId>
+			<version>0.5.0a</version>
+			<scope>system</scope>
+			<systemPath>/usr/local/jcuda/jre/jcuda-0.5.0a.jar</systemPath>
+      		</dependency>
 
 		<!-- test dependencies -->
 		<dependency>
